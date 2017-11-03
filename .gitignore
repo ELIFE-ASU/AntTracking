@@ -110,6 +110,7 @@ ENV/
 *.mp4
 *.avi
 
-
+# vscode
+.vscode
 
 
