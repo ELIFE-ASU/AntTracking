@@ -99,3 +99,17 @@ ENV/
 
 # mypy
 .mypy_cache/
+
+# mac
+.DS_Store
+
+# data, images, videos
+*.jpeg
+*.jpe
+*.png
+*.mp4
+*.avi
+
+
+
+
