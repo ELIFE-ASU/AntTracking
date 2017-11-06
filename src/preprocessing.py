@@ -2,10 +2,11 @@ import os
 import cv2
 import numpy as np
 
-SOURCE = 'ant_img'
-TARGET = 'ant_img_gs'
+SOURCE = '../data/ant_img'
+TARGET = '../data/ant_img_gs'
 SIZE = 30
 AUG = 5
+
 
 def main():
     for sub in os.listdir(SOURCE):
@@ -17,18 +18,17 @@ def main():
                     # Read image as gray_scale
                     img = cv2.imread(afile, 0)
                     _, th = cv2.threshold(img, 0, 255,
-                                          cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-                    # Normalize image
-                    normalized = img / 128. - 1.
+                                          cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
                     # Subtract background
-                    mask = th==0
-                    masked = mask * normalized
+                    mask = th == 0
+                    masked = mask * img
                     # Find blob centroids
                     _, contours, _ = cv2.findContours(th, 1, 2)
                     M = list(map(cv2.moments, contours))
                     try:
-                        cxs = list(map(lambda x: int(x['m10']/x['m00']), M))
-                        cys = list(map(lambda x: int(x['m01']/x['m00']), M))
+                        cxs = list(map(lambda x: int(x['m10'] / x['m00']), M))
+                        cys = list(map(lambda x: int(x['m01'] / x['m00']), M))
                     except ZeroDivisionError:
                         print('Error finding centroids for {}/ {}'.format(sub, item))
                         continue
@@ -36,17 +36,18 @@ def main():
                     cx = sum(cxs) // len(cxs)
                     cy = sum(cys) // len(cys)
                     # Crop image near the center
-                    if cx < SIZE//2 or cy < SIZE//2:
+                    if cx < SIZE // 2 or cy < SIZE // 2:
                         print('{}/{} centoirds off center'.format(sub, item))
                         continue
-                    cropped = masked[cy-SIZE//2:cy+SIZE//2, cx-SIZE//2:cx+SIZE//2]
+                    cropped = masked[cy - SIZE // 2:cy +
+                                     SIZE // 2, cx - SIZE // 2:cx + SIZE // 2]
                     # Save cropped image
                     cv2.imwrite(os.path.join(TARGET, sub, item), cropped)
                     # Rotation
                     rows, cols = cropped.shape
                     for i in range(AUG):
-                        mat = cv2.getRotationMatrix2D((cols/2, rows/2),
-                                                      np.random.rand()*360, 1)
+                        mat = cv2.getRotationMatrix2D((cols / 2, rows / 2),
+                                                      np.random.rand() * 360, 1)
                         rotated = cv2.warpAffine(cropped, mat, (cols, rows))
                         # New file name
                         mod_item = item[:-4] + '_rot' + str(i) + '.png'
@@ -57,4 +58,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
