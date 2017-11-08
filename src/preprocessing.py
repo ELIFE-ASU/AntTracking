@@ -4,7 +4,7 @@ import numpy as np
 
 SOURCE = '../data/ant_img'
 TARGET = '../data/ant_img_gs'
-SIZE = 30
+SIZE = 28
 AUG = 5
 
 
