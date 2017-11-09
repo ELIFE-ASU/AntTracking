@@ -12,6 +12,9 @@ def main():
     for sub in os.listdir(SOURCE):
         sub_folder = os.path.join(SOURCE, sub)
         if not sub.startswith('.') and os.path.isdir(sub_folder):
+            target_sub_folder = os.path.join(TARGET, sub)
+            if not os.path.exists(target_sub_folder):
+                os.mkdir(target_sub_folder)
             for item in os.listdir(sub_folder):
                 afile = os.path.join(sub_folder, item)
                 if not item.startswith('.') and os.path.isfile(afile):
@@ -42,7 +45,7 @@ def main():
                     cropped = masked[cy - SIZE // 2:cy +
                                      SIZE // 2, cx - SIZE // 2:cx + SIZE // 2]
                     # Save cropped image
-                    cv2.imwrite(os.path.join(TARGET, sub, item), cropped)
+                    cv2.imwrite(os.path.join(target_sub_folder, item), cropped)
                     # Rotation
                     rows, cols = cropped.shape
                     for i in range(AUG):
