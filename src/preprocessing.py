@@ -55,7 +55,7 @@ def main():
                         # New file name
                         mod_item = item[:-4] + '_rot' + str(i) + '.png'
                         # Save rotated image
-                        cv2.imwrite(os.path.join(TARGET, sub, mod_item),
+                        cv2.imwrite(os.path.join(target_sub_folder, mod_item),
                                     rotated)
 
 
