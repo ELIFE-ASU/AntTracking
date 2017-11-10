@@ -85,8 +85,9 @@ def find_centroids(thresh, min_size):
 
 
 def get_masked_window(grayed, cx, cy, size):
-    windowed = grayed[cy - size // 2:cy +
-                      size // 2, cx - size // 2:cx + size // 2]
+    ymin = cy - size // 2 if cy - size // 2 > 0 else 0
+    xmin = cx - size // 2 if cx - size // 2 > 0 else 0
+    windowed = grayed[ymin:ymin+size, xmin:xmin+size]
     _, bw = cv2.threshold(
         windowed, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     _, cont, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
@@ -142,7 +143,7 @@ def main(args):
     if all(args.region):
         xmin, ymin, xmax, ymax = args.region
     else:
-        xmin, ymin, xmax, ymax = 0, video_width, 0, video_height
+        xmin, ymin, xmax, ymax = 0, 0, video_width, video_height
 
     # Load TF model.
     x, y = build_graph(SIZE)
