@@ -1,3 +1,4 @@
+import os
 import argparse
 import progressbar
 import cv2
@@ -27,7 +28,7 @@ def build_graph(size):
 
     tf.reset_default_graph()
 
-    x = tf.placeholder(tf.float32, shape=[None, size, size, 1])
+    x = tf.placeholder(tf.float32, shape=[None, size, size])
     y_ = tf.placeholder(tf.float32, [None, 3])
 
     with tf.name_scope('reshape'):
@@ -100,8 +101,8 @@ def main(args):
     input_video = cv2.VideoCapture(args.input)
 
     # Define video resolution and fps.
-    video_width = input_video.get(cv2.CAP_PROP_FRAME_WIDTH)
-    video_height = input_video.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    video_width = int(input_video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    video_height = int(input_video.get(cv2.CAP_PROP_FRAME_HEIGHT))
     if not video_width:
         video_width = args.resolution[0]
     if not video_height:
@@ -112,11 +113,13 @@ def main(args):
     if args.fps:
         video_fps = args.fps
     else:
-        video_fps = input_video.get(cv2.CAP_PROP_FPS)
+        video_fps = int(input_video.get(cv2.CAP_PROP_FPS))
     if not video_fps:
         raise argparse.ArgumentError('--fps', 'fps not defined')
 
     # Open output video
+    if os.path.exists(args.output):
+        os.remove(args.output)
     output_video = cv2.VideoWriter(args.output,
                                    cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'),
                                    video_fps,
@@ -137,22 +140,22 @@ def main(args):
 
     # Define monitored region.
     if all(args.region):
-        xmin, xmax, ymin, ymax = args.region
+        xmin, ymin, xmax, ymax = args.region
     else:
-        xmin, xmax, ymin, ymax = 0, video_width, 0, video_height
-
-    # Progress bar.
-    progressbar.streams.wrap_stderr()
-    bar = progressbar.ProgressBar(max_value=(video_duration),
-                                  redirect_stdout=True)
-    bar.update(0)
+        xmin, ymin, xmax, ymax = 0, video_width, 0, video_height
 
     # Load TF model.
     x, y = build_graph(SIZE)
     saver = tf.train.Saver()
 
     sess = tf.Session()
-    saver.restore(sess, args.checkpoint)
+    saver.restore(sess, args.tfcheckpoint)
+
+    # Progress bar.
+    progressbar.streams.wrap_stderr()
+    bar = progressbar.ProgressBar(max_value=(video_duration),
+                                  redirect_stdout=True)
+    bar.update(0)
 
     # Tracking
     frame_count = 0
@@ -218,8 +221,11 @@ if __name__ == '__main__':
                         default=[XMIN, YMIN, XMAX, YMAX],
                         help='region of input video to be monitored')
     parser.add_argument('--tfcheckpoint', type=str,
-                        default='../data/tfsave/trained_model.ckpt',
+                        default='../data/tf_save/trained_model.ckpt',
                         help='path to TensorFlow checkpoint')
+    parser.add_argument('--label_size', type=int,
+                        default=WINDOW_SIZE,
+                        help='size of label box')
 
     args = parser.parse_args()
 
