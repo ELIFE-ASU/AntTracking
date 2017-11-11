@@ -87,7 +87,7 @@ def find_centroids(thresh, min_size):
 def get_masked_window(grayed, cx, cy, size):
     ymin = cy - size // 2 if cy - size // 2 > 0 else 0
     xmin = cx - size // 2 if cx - size // 2 > 0 else 0
-    windowed = grayed[ymin:ymin+size, xmin:xmin+size]
+    windowed = grayed[ymin:ymin + size, xmin:xmin + size]
     _, bw = cv2.threshold(
         windowed, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     _, cont, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
@@ -100,6 +100,8 @@ def get_masked_window(grayed, cx, cy, size):
 def main(args):
     # Load input video.
     input_video = cv2.VideoCapture(args.input)
+    if not input_video.isOpened():
+        raise IOError('video "{}" not open'.format(args.input))
 
     # Define video resolution and fps.
     video_width = int(input_video.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -161,7 +163,7 @@ def main(args):
     # Tracking
     frame_count = 0
     video_time = 0
-    while input_video.isOpened() and video_time < video_end:
+    while video_time < video_end:
         ret, frame = input_video.read()
         if not ret:
             bar.update(video_time)
