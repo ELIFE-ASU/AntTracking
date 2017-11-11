@@ -162,7 +162,10 @@ def main(args):
     frame_count = 0
     video_time = 0
     while input_video.isOpened() and video_time < video_end:
-        _, frame = input_video.read()
+        ret, frame = input_video.read()
+        if not ret:
+            bar.update(video_time)
+            break
 
         cropped = frame[ymin:ymax, xmin:xmax]
         grayed = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
