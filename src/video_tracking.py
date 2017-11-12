@@ -13,7 +13,7 @@ YMAX = 2000
 
 SIZE = 28
 MIN_CONTOUR_SIZE = 45
-LABEL_SIZE = 40
+LABEL_SIZE = 28
 
 
 def build_graph(size):
@@ -189,8 +189,8 @@ def main(args):
         predictions = sess.run(tf.argmax(y, 1), feed_dict={x: masks})
         for prediction, (cx, cy) in zip(predictions, positions):
             if prediction == 1:
-                cv2.rectangle(frame, (cx + XMIN - args.label_size // 2, cy + YMIN - args.label_size),
-                              (cx + XMIN + args.label_size, cy + YMIN + args.label_size), (0, 255, 0), 3)
+                cv2.rectangle(frame, (cx + XMIN - args.label_size // 2, cy + YMIN - args.label_size // 2),
+                              (cx + XMIN + args.label_size // 2, cy + YMIN + args.label_size // 2), (0, 255, 0), 3)
             # elif prediction == 2:
             #    cv2.rectangle(frame, (cx + XMIN - 15, cy + YMIN - 15),
             #                  (cx + XMIN + 15, cy + YMIN + 15), (255, 0, 0), 3)
