@@ -13,7 +13,7 @@ YMAX = 2000
 
 SIZE = 28
 MIN_CONTOUR_SIZE = 45
-WINDOW_SIZE = SIZE
+LABEL_SIZE = 40
 
 
 def build_graph(size):
@@ -125,7 +125,7 @@ def main(args):
     if os.path.exists(args.output):
         os.remove(args.output)
     output_video = cv2.VideoWriter(args.output,
-                                   cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'),
+                                   cv2.VideoWriter_fourcc('X', '2', '6', '4'),
                                    video_fps,
                                    (video_width, video_height))
 
@@ -180,8 +180,8 @@ def main(args):
         positions = []
 
         for cx, cy in zip(cxs, cys):
-            masked = get_masked_window(grayed, cx, cy, WINDOW_SIZE)
-            if masked is not None and masked.size == WINDOW_SIZE * WINDOW_SIZE:
+            masked = get_masked_window(grayed, cx, cy, SIZE)
+            if masked is not None and masked.size == SIZE * SIZE:
                 masks.append(masked)
                 positions.append((cx, cy))
 
@@ -189,8 +189,8 @@ def main(args):
         predictions = sess.run(tf.argmax(y, 1), feed_dict={x: masks})
         for prediction, (cx, cy) in zip(predictions, positions):
             if prediction == 1:
-                cv2.rectangle(frame, (cx + XMIN - 15, cy + YMIN - 15),
-                              (cx + XMIN + 15, cy + YMIN + 15), (0, 255, 0), 3)
+                cv2.rectangle(frame, (cx + XMIN - args.label_size // 2, cy + YMIN - args.label_size,
+                              (cx + XMIN + args.label_size, cy + YMIN + args.label_size), (0, 255, 0), 3)
             # elif prediction == 2:
             #    cv2.rectangle(frame, (cx + XMIN - 15, cy + YMIN - 15),
             #                  (cx + XMIN + 15, cy + YMIN + 15), (255, 0, 0), 3)
@@ -231,7 +231,7 @@ if __name__ == '__main__':
                         default='../data/tf_save/trained_model.ckpt',
                         help='path to TensorFlow checkpoint')
     parser.add_argument('--label_size', type=int,
-                        default=WINDOW_SIZE,
+                        default=LABEL_SIZE,
                         help='size of label box')
 
     args = parser.parse_args()
