@@ -125,7 +125,7 @@ def main(args):
     if os.path.exists(args.output):
         os.remove(args.output)
     output_video = cv2.VideoWriter(args.output,
-                                   cv2.VideoWriter_fourcc('X', '2', '6', '4'),
+                                   cv2.VideoWriter_fourcc(*args.codec),
                                    video_fps,
                                    (video_width, video_height))
 
@@ -233,6 +233,9 @@ if __name__ == '__main__':
     parser.add_argument('--label_size', type=int,
                         default=LABEL_SIZE,
                         help='size of label box')
+    parser.add_argument('-c', '--codec', type=str,
+                        default='X264',
+                        help='encoding codec for output video')
 
     args = parser.parse_args()
 
