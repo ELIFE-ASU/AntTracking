@@ -131,14 +131,14 @@ def main(args):
 
     # Define input video length in seconds.
     video_end = int(input_video.get(cv2.CAP_PROP_FRAME_COUNT) / video_fps)
-    if args.range[1]:
-        video_end = args.range[1]
+    if args.time[1]:
+        video_end = args.time[1]
     if not video_end:
         video_end = 5 * 3600  # Default max duration 5 hours.
 
     video_start = 0
-    if args.range[0]:
-        video_start = args.range[0]
+    if args.time[0]:
+        video_start = args.time[0]
 
     video_duration = video_end - video_start
 
@@ -153,7 +153,7 @@ def main(args):
     saver = tf.train.Saver()
 
     sess = tf.Session()
-    saver.restore(sess, args.tfcheckpoint)
+    saver.restore(sess, args.checkpoint)
 
     # Progress bar.
     progressbar.streams.wrap_stderr()
@@ -209,10 +209,10 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--input', type=str,
+    parser.add_argument('-i', '--input', type=str,
                         default='../data/videos/TandemRun.mp4',
                         help='path to input video file')
-    parser.add_argument('--output', type=str,
+    parser.add_argument('-o', '--output', type=str,
                         default='../data/videos/tracked.mp4',
                         help='path to output video file')
     parser.add_argument('--resolution', nargs=2, type=int,
@@ -221,13 +221,13 @@ if __name__ == '__main__':
     parser.add_argument('--fps', type=int,
                         default=None,
                         help='frame per second of output videos')
-    parser.add_argument('--range', nargs=2, type=int,
+    parser.add_argument('--time', nargs=2, type=int,
                         default=[None, None],
                         help='time range of input video in seconds')
     parser.add_argument('--region', nargs=4, type=int,
                         default=[XMIN, YMIN, XMAX, YMAX],
                         help='region of input video to be monitored')
-    parser.add_argument('--tfcheckpoint', type=str,
+    parser.add_argument('--checkpoint', type=str,
                         default='../data/tf_save/trained_model.ckpt',
                         help='path to TensorFlow checkpoint')
     parser.add_argument('--label_size', type=int,
