@@ -131,14 +131,14 @@ def main(args):
 
     # Define input video length in seconds.
     video_end = int(input_video.get(cv2.CAP_PROP_FRAME_COUNT) / video_fps)
-    if args.frame_range[1]:
-        video_end = int(args.frame_range[1] / video_fps)
+    if args.range[1]:
+        video_end = args.range[1]
     if not video_end:
         video_end = 5 * 3600  # Default max duration 5 hours.
 
     video_start = 0
-    if args.frame_range[0]:
-        video_start = int(args.frame_range[0] / video_fps)
+    if args.range[0]:
+        video_start = args.range[0]
 
     video_duration = video_end - video_start
 
@@ -189,7 +189,7 @@ def main(args):
         predictions = sess.run(tf.argmax(y, 1), feed_dict={x: masks})
         for prediction, (cx, cy) in zip(predictions, positions):
             if prediction == 1:
-                cv2.rectangle(frame, (cx + XMIN - args.label_size // 2, cy + YMIN - args.label_size,
+                cv2.rectangle(frame, (cx + XMIN - args.label_size // 2, cy + YMIN - args.label_size),
                               (cx + XMIN + args.label_size, cy + YMIN + args.label_size), (0, 255, 0), 3)
             # elif prediction == 2:
             #    cv2.rectangle(frame, (cx + XMIN - 15, cy + YMIN - 15),
@@ -221,9 +221,9 @@ if __name__ == '__main__':
     parser.add_argument('--fps', type=int,
                         default=None,
                         help='frame per second of output videos')
-    parser.add_argument('--frame_range', nargs=2, type=int,
+    parser.add_argument('--range', nargs=2, type=int,
                         default=[None, None],
-                        help='frame range of input video')
+                        help='time range of input video in seconds')
     parser.add_argument('--region', nargs=4, type=int,
                         default=[XMIN, YMIN, XMAX, YMAX],
                         help='region of input video to be monitored')
