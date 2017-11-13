@@ -93,7 +93,7 @@ def get_masked_window(grayed, cx, cy, size):
     _, cont, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
     if 0 < len(cont) < 3:
-        return windowed * (bw == 0) / 256.  # Normalize.
+        return windowed * (bw == 0)  # / 256.  # Normalize.
     else:
         return None
 

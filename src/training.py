@@ -16,18 +16,19 @@ def get_data(path, split):
     labels = []
 
     type_labels = {'individual': [1, 0, 0],
-                   'tandem': [0, 1, 0], 'transport': [0, 0, 1]}
+                   'tandem': [0, 1, 0],
+                   'transport': [0, 0, 1]}
 
     for img_type in type_labels:
-        path = os.path.join(path, img_type)
+        sub_path = os.path.join(path, img_type)
         for img_file in os.listdir(path):
             if not img_file.startswith('.') and img_file.endswith('.png'):
-                im = cv2.imread(os.path.join(path, img_file), 0)
+                im = cv2.imread(os.path.join(sub_path, img_file), 0)
                 if im.shape != (SIZE, SIZE):
                     continue
                 # Normalize
-                mask = im != 0
-                im = mask * (im / 256.)
+                # mask = im != 0
+                # im = mask * (im / 256.)
 
                 images.append(im)
                 labels.append(type_labels[img_type])
