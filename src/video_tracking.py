@@ -124,10 +124,6 @@ def main(args):
     # Open output video
     if os.path.exists(args.output):
         os.remove(args.output)
-    output_video = cv2.VideoWriter(args.output,
-                                   cv2.VideoWriter_fourcc(*args.codec),
-                                   video_fps,
-                                   (video_width, video_height))
 
     # Define input video length in seconds.
     video_end = int(input_video.get(cv2.CAP_PROP_FRAME_COUNT) / video_fps)
@@ -155,16 +151,31 @@ def main(args):
     sess = tf.Session()
     saver.restore(sess, args.checkpoint)
 
+    # Locating user specified video start.
+    frame_count = 0
+    while frame_count < video_start * video_fps:
+        ret, frame = input_video.read()
+        if not ret:
+            print('Input video shorter than {}s'.format(video_start))
+            input_video.release()
+            return
+        frame_count += 1
+
+    # Open output video for recording.
+    output_video = cv2.VideoWriter(args.output,
+                                   cv2.VideoWriter_fourcc(*args.codec),
+                                   video_fps,
+                                   (video_width, video_height))
+
     # Progress bar.
     progressbar.streams.wrap_stderr()
     bar = progressbar.ProgressBar(max_value=(video_duration),
                                   redirect_stdout=True)
     bar.update(0)
 
-    # Tracking
-    frame_count = 0
+    # Tracking.
     video_time = 0
-    while video_time < video_end:
+    while video_time < video_duration:
         ret, frame = input_video.read()
         if not ret:
             bar.update(video_time)
