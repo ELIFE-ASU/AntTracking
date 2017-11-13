@@ -101,7 +101,7 @@ def main(args):
     print('Reading data...')
     data = get_data(args.data_path, args.train_set_size)
 
-    x, y, y_, train_step = build_cnn(args.size)
+    x, y, y_, train_step = build_cnn(args.image_size)
 
     saver = tf.train.Saver()
 
