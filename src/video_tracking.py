@@ -144,13 +144,6 @@ def main(args):
     else:
         xmin, ymin, xmax, ymax = 0, 0, video_width, video_height
 
-    # Load TF model.
-    x, y = build_graph(SIZE)
-    saver = tf.train.Saver()
-
-    sess = tf.Session()
-    saver.restore(sess, args.checkpoint)
-
     # Locating user specified video start.
     frame_count = 0
     while frame_count < video_start * video_fps:
@@ -166,6 +159,13 @@ def main(args):
                                    cv2.VideoWriter_fourcc(*args.codec),
                                    video_fps,
                                    (video_width, video_height))
+
+    # Load TF model.
+    x, y = build_graph(SIZE)
+    saver = tf.train.Saver()
+
+    sess = tf.Session()
+    saver.restore(sess, args.checkpoint)
 
     # Progress bar.
     progressbar.streams.wrap_stderr()
