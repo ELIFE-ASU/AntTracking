@@ -21,7 +21,7 @@ def get_data(path, split):
 
     for img_type in type_labels:
         sub_path = os.path.join(path, img_type)
-        for img_file in os.listdir(path):
+        for img_file in os.listdir(sub_path):
             if not img_file.startswith('.') and img_file.endswith('.png'):
                 im = cv2.imread(os.path.join(sub_path, img_file), 0)
                 if im.shape != (SIZE, SIZE):
@@ -32,7 +32,7 @@ def get_data(path, split):
 
                 images.append(im)
                 labels.append(type_labels[img_type])
-
+    print(len(images))
     images = np.asarray(images)
     labels = np.asarray(labels)
 
@@ -100,6 +100,7 @@ def build_cnn(size):
 def main(args):
     print('Reading data...')
     data = get_data(args.data_path, args.train_set_size)
+    print(len(data['train']['images']))
 
     x, y, y_, train_step = build_cnn(args.image_size)
 
