@@ -32,7 +32,7 @@ def get_data(path, split):
 
                 images.append(im)
                 labels.append(type_labels[img_type])
-    print(len(images))
+
     images = np.asarray(images)
     labels = np.asarray(labels)
 
@@ -100,7 +100,6 @@ def build_cnn(size):
 def main(args):
     print('Reading data...')
     data = get_data(args.data_path, args.train_set_size)
-    print(len(data['train']['images']))
 
     x, y, y_, train_step = build_cnn(args.image_size)
 
@@ -111,7 +110,7 @@ def main(args):
 
     print('Training...')
     start_time = time.time()
-    steps = 5000
+    steps = args.steps
     for i in range(steps):
         if (i + 1) % 100 == 0:
             correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
@@ -154,6 +153,9 @@ if __name__ == '__main__':
     parser.add_argument('--train_set_size', type=float,
                         default=0.,
                         help='relative size of train set to whole data set')
+    parser.add_argument('--steps', type=int,
+                        default=3000,
+                        help='number of training steps')
 
     args = parser.parse_args()
 
