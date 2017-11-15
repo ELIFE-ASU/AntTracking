@@ -239,7 +239,7 @@ if __name__ == '__main__':
                         default=[XMIN, YMIN, XMAX, YMAX],
                         help='region of input video to be monitored')
     parser.add_argument('--checkpoint', type=str,
-                        default='../data/tf_save/trained_model.ckpt',
+                        default='../data/tf_save/trained_model_v1/trained_model.ckpt',
                         help='path to TensorFlow checkpoint')
     parser.add_argument('--label_size', type=int,
                         default=LABEL_SIZE,
