@@ -1,0 +1,11 @@
+# "TandemRun.mp4"
+XMIN = 1470
+XMAX = 2840
+YMIN = 50
+YMAX = 2000
+
+# "TandemRun23.mp4"
+XMIN = 1361
+XMAX = 2723
+YMIN = 55
+YMAX = 2000

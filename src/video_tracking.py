@@ -5,12 +5,6 @@ import cv2
 import tensorflow as tf
 
 
-# Monitored region of the video
-XMIN = 1470
-XMAX = 2840
-YMIN = 50
-YMAX = 2000
-
 SIZE = 28
 MIN_CONTOUR_SIZE = 45
 LABEL_SIZE = 28
@@ -200,11 +194,11 @@ def main(args):
         predictions = sess.run(tf.argmax(y, 1), feed_dict={x: masks})
         for prediction, (cx, cy) in zip(predictions, positions):
             if prediction == 1:
-                cv2.rectangle(frame, (cx + XMIN - args.label_size // 2, cy + YMIN - args.label_size // 2),
-                              (cx + XMIN + args.label_size // 2, cy + YMIN + args.label_size // 2), (0, 255, 0), 3)
+                cv2.rectangle(frame, (cx + xmin - args.label_size // 2, cy + ymin - args.label_size // 2),
+                              (cx + xmin + args.label_size // 2, cy + ymin + args.label_size // 2), (0, 255, 0), 3)
             # elif prediction == 2:
-            #    cv2.rectangle(frame, (cx + XMIN - 15, cy + YMIN - 15),
-            #                  (cx + XMIN + 15, cy + YMIN + 15), (255, 0, 0), 3)
+            #    cv2.rectangle(frame, (cx + xmin - 15, cy + ymin - 15),
+            #                  (cx + xmin + 15, cy + ymin + 15), (255, 0, 0), 3)
 
         output_video.write(frame)
         # Update progress bar
@@ -213,30 +207,25 @@ def main(args):
             video_time += 1
             bar.update(video_time)
 
-    output_video.release()
     sess.close()
+    input_video.release()
+    output_video.release()
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-i', '--input', type=str,
-                        default='../data/videos/TandemRun.mp4',
+    parser.add_argument('--input', '-i', type=str,
                         help='path to input video file')
-    parser.add_argument('-o', '--output', type=str,
-                        default='../data/videos/tracked.mp4',
+    parser.add_argument('--output', '-o', type=str,
                         help='path to output video file')
     parser.add_argument('--resolution', nargs=2, type=int,
-                        default=[None, None],
                         help='resolution of input and output videos')
     parser.add_argument('--fps', type=int,
-                        default=None,
                         help='frame per second of output videos')
-    parser.add_argument('--time', nargs=2, type=int,
-                        default=[None, None],
+    parser.add_argument('--time', '-t', nargs=2, type=int,
                         help='time range of input video in seconds')
     parser.add_argument('--region', nargs=4, type=int,
-                        default=[XMIN, YMIN, XMAX, YMAX],
                         help='region of input video to be monitored')
     parser.add_argument('--checkpoint', type=str,
                         default='../data/tf_save/trained_model_v1/trained_model.ckpt',
