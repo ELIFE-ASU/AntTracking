@@ -2,12 +2,54 @@ import os
 import argparse
 import progressbar
 import cv2
+import numpy as np
 import tensorflow as tf
 
 
 SIZE = 28
-MIN_CONTOUR_SIZE = 45
-LABEL_SIZE = 28
+MIN_CONTOUR_SIZE = 40
+MAX_CONTOUR_SIZE = 250
+LABEL_SIZE = 40
+
+
+def get_parameters(input_video, args):
+    # Define video resolution and fps.
+    video_width = int(input_video.get(cv2.CAP_PROP_FRAME_WIDTH))
+    video_height = int(input_video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    if not video_width:
+        video_width = args.resolution[0]
+    if not video_height:
+        video_height = args.resolution[1]
+    if not (video_width or video_height):
+        raise argparse.ArgumentError('--resolution', 'resolution not defined')
+
+    if args.fps:
+        video_fps = args.fps
+    else:
+        video_fps = int(input_video.get(cv2.CAP_PROP_FPS))
+    if not video_fps:
+        raise argparse.ArgumentError('--fps', 'fps not defined')
+
+    # Define input video length in seconds.
+    video_end = int(input_video.get(cv2.CAP_PROP_FRAME_COUNT) / video_fps)
+    if args.time[1]:
+        video_end = args.time[1]
+    if not video_end:
+        video_end = 5 * 3600  # Default max duration 5 hours.
+
+    video_start = 0
+    if args.time[0]:
+        video_start = args.time[0]
+
+    # Define monitored region.
+    if any([val is None for val in args.region]):
+        xmin, ymin, xmax, ymax = 0, 0, video_width, video_height
+    else:
+        xmin, ymin, xmax, ymax = args.region
+
+    return {'resolution': (video_width, video_height, video_fps),
+            'time': (video_start, video_end),
+            'region': (xmin, ymin, xmax, ymax)}
 
 
 def build_graph(size):
@@ -23,7 +65,6 @@ def build_graph(size):
     tf.reset_default_graph()
 
     x = tf.placeholder(tf.float32, shape=[None, size, size])
-    y_ = tf.placeholder(tf.float32, [None, 3])
 
     with tf.name_scope('reshape'):
         x_image = tf.reshape(x, [-1, SIZE, SIZE, 1])
@@ -54,42 +95,123 @@ def build_graph(size):
     return x, y
 
 
-def find_centroids(thresh, min_size):
+def find_centroids(bw, min_size, max_size):
     if min_size < 1:
         raise ValueError('min_size must be at least 1')
 
-    _, cont, _ = cv2.findContours(thresh, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+    _, cont, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
     M = map(cv2.moments, cont)
 
-    cxs = []
-    cys = []
+    centroids = []
 
-    for i, m in enumerate(M):
-        if m['m00'] < min_size:
+    for m in M:
+        if m['m00'] < min_size or m['m00'] > max_size:
             continue
 
         cx = int(m['m10'] / m['m00'])
         cy = int(m['m01'] / m['m00'])
 
-        cxs.append(cx)
-        cys.append(cy)
+        centroids.append((cx, cy))
 
-    return cxs, cys
+    return centroids
 
 
 def get_masked_window(grayed, cx, cy, size):
     ymin = cy - size // 2 if cy - size // 2 > 0 else 0
     xmin = cx - size // 2 if cx - size // 2 > 0 else 0
     windowed = grayed[ymin:ymin + size, xmin:xmin + size]
-    _, bw = cv2.threshold(
+    th, bw = cv2.threshold(
         windowed, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     _, cont, _ = cv2.findContours(bw, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
 
     if 0 < len(cont) < 3:
-        return windowed * (bw == 0)  # / 256.  # Normalize.
-    else:
-        return None
+        return windowed * (bw == 0), th  # / 256.  # Normalize.
+    return None, None
+
+
+def mesh_positions(positions, size):
+    new_positions = []
+    positions = list(positions)
+    while positions:
+        cx, cy = positions.pop()
+        i = 0
+        n = 1
+        sum_x, sum_y = cx, cy
+        while i < len(positions):
+            cx_, cy_ = positions[i]
+            if abs(cx - cx_) < size and abs(cy - cy_) < size:
+                sum_x += cx_
+                sum_y += cy_
+                n += 1
+                positions.pop(i)
+            else:
+                i += 1
+        new_positions.append((int(sum_x / n), int(sum_y / n)))
+    return new_positions
+
+
+def locate_tandem(frame, region, classifier):
+    xmin, ymin, xmax, ymax = region
+    sess = classifier['session']
+    x = classifier['x']
+    y = classifier['y']
+
+    cropped = frame[ymin:ymax, xmin:xmax]
+    grayed = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
+    bw = cv2.adaptiveThreshold(grayed, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                               cv2.THRESH_BINARY, 11, 2)
+    centroids = find_centroids(bw, MIN_CONTOUR_SIZE, MAX_CONTOUR_SIZE)
+
+    masks = []
+    positions = []
+
+    for cx, cy in centroids:
+        masked, _ = get_masked_window(grayed, cx, cy, SIZE)
+        if masked is not None and masked.size == SIZE * SIZE:
+            masks.append(masked)
+            positions.append((cx + xmin, cy + ymin))  # Absolute positions.
+    positions = np.asarray(positions)
+
+    # Feed masked windows to trained model for prediction.
+    predictions = sess.run(tf.argmax(y, 1), feed_dict={x: masks})
+
+    # Put tags on video according to the predictions.
+    tandem_positions = positions[predictions == 1]
+    tandem_positions = mesh_positions(tandem_positions, SIZE)
+
+    return tandem_positions
+
+
+def individual_positions(frame, tandem_position, window_size):
+    global counter
+    xmin, xmax = tandem_position[0] - \
+        window_size // 2, tandem_position[0] + window_size // 2
+    ymin, ymax = tandem_position[1] - \
+        window_size // 2, tandem_position[1] + window_size // 2
+
+    window = cv2.cvtColor(frame[ymin:ymax, xmin:xmax], cv2.COLOR_BGR2GRAY)
+    th, bw = cv2.threshold(window, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    centroids = find_centroids(bw, MIN_CONTOUR_SIZE, MAX_CONTOUR_SIZE)
+
+    while len(centroids) < 2 and th > 80:
+        th, bw = cv2.threshold(window, th - 5, 255, cv2.THRESH_BINARY)
+        centroids = find_centroids(bw, 10, MAX_CONTOUR_SIZE)
+
+    return [(cx + xmin, cy + ymin) for cx, cy in centroids]
+
+
+def tag_tandem(frame, tandem_positions, window_size):
+    for cx, cy in tandem_positions:
+        ants_positions = individual_positions(frame, (cx, cy), window_size)
+        cv2.rectangle(frame, (cx - window_size // 2, cy - window_size // 2),
+                      (cx + window_size // 2, cy + window_size // 2), (0, 255, 0), 3)
+
+        # Mark the center of mass of each ant.
+        for antx, anty in ants_positions:
+            cv2.rectangle(frame, (antx - 2, anty - 2),
+                          (antx + 2, anty + 2), (0, 0, 255), 2)
+    return frame
 
 
 def main(args):
@@ -98,47 +220,15 @@ def main(args):
     if not input_video.isOpened():
         raise IOError('video "{}" not open'.format(args.input))
 
-    # Define video resolution and fps.
-    video_width = int(input_video.get(cv2.CAP_PROP_FRAME_WIDTH))
-    video_height = int(input_video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    if not video_width:
-        video_width = args.resolution[0]
-    if not video_height:
-        video_height = args.resolution[1]
-    if not (video_width or video_height):
-        raise argparse.ArgumentError('--resolution', 'resolution not defined')
-
-    if args.fps:
-        video_fps = args.fps
-    else:
-        video_fps = int(input_video.get(cv2.CAP_PROP_FPS))
-    if not video_fps:
-        raise argparse.ArgumentError('--fps', 'fps not defined')
-
-    # Open output video
-    if os.path.exists(args.output):
-        os.remove(args.output)
-
-    # Define input video length in seconds.
-    video_end = int(input_video.get(cv2.CAP_PROP_FRAME_COUNT) / video_fps)
-    if args.time[1]:
-        video_end = args.time[1]
-    if not video_end:
-        video_end = 5 * 3600  # Default max duration 5 hours.
-
-    video_start = 0
-    if args.time[0]:
-        video_start = args.time[0]
-
+    # Get parameters.
+    parameters = get_parameters(input_video, args)
+    video_width, video_height, video_fps = parameters['resolution']
+    video_start, video_end = parameters['time']
+    xmin, ymin, xmax, ymax = parameters['region']
     video_duration = video_end - video_start
 
-    # Define monitored region.
-    if all(args.region):
-        xmin, ymin, xmax, ymax = args.region
-    else:
-        xmin, ymin, xmax, ymax = 0, 0, video_width, video_height
-
     # Locating user specified video start.
+    print('Seeking specified video start...', end='')
     frame_count = 0
     while frame_count < video_start * video_fps:
         ret, frame = input_video.read()
@@ -147,8 +237,12 @@ def main(args):
             input_video.release()
             return
         frame_count += 1
+    print(' done.')
 
     # Open output video for recording.
+    if os.path.exists(args.output):
+        os.remove(args.output)
+
     output_video = cv2.VideoWriter(args.output,
                                    cv2.VideoWriter_fourcc(*args.codec),
                                    video_fps,
@@ -158,9 +252,14 @@ def main(args):
     x, y = build_graph(SIZE)
     saver = tf.train.Saver()
 
+    print('Loading classifier model...', end='')
     sess = tf.Session()
     saver.restore(sess, args.checkpoint)
 
+    classifier = {'session': sess, 'x': x, 'y': y}
+    print(' done.')
+
+    print('Tracking...')
     # Progress bar.
     progressbar.streams.wrap_stderr()
     bar = progressbar.ProgressBar(max_value=(video_duration),
@@ -175,32 +274,12 @@ def main(args):
             bar.update(video_time)
             break
 
-        cropped = frame[ymin:ymax, xmin:xmax]
-        grayed = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
-        thresh = cv2.adaptiveThreshold(grayed, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                       cv2.THRESH_BINARY, 11, 2)
-        cxs, cys = find_centroids(thresh, MIN_CONTOUR_SIZE)
+        tandem_positions = locate_tandem(
+            frame, (xmin, ymin, xmax, ymax), classifier)
 
-        masks = []
-        positions = []
+        tagged_frame = tag_tandem(frame, tandem_positions, args.label_size)
 
-        for cx, cy in zip(cxs, cys):
-            masked = get_masked_window(grayed, cx, cy, SIZE)
-            if masked is not None and masked.size == SIZE * SIZE:
-                masks.append(masked)
-                positions.append((cx, cy))
-
-        # Feed masked windows to trained model for prediction.
-        predictions = sess.run(tf.argmax(y, 1), feed_dict={x: masks})
-        for prediction, (cx, cy) in zip(predictions, positions):
-            if prediction == 1:
-                cv2.rectangle(frame, (cx + xmin - args.label_size // 2, cy + ymin - args.label_size // 2),
-                              (cx + xmin + args.label_size // 2, cy + ymin + args.label_size // 2), (0, 255, 0), 3)
-            # elif prediction == 2:
-            #    cv2.rectangle(frame, (cx + xmin - 15, cy + ymin - 15),
-            #                  (cx + xmin + 15, cy + ymin + 15), (255, 0, 0), 3)
-
-        output_video.write(frame)
+        output_video.write(tagged_frame)
         # Update progress bar
         frame_count += 1
         if frame_count % 30 == 0:
@@ -237,6 +316,4 @@ if __name__ == '__main__':
                         default='X264',
                         help='encoding codec for output video')
 
-    args = parser.parse_args()
-
-    main(args)
+    main(parser.parse_args())

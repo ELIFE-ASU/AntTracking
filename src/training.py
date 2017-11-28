@@ -120,17 +120,18 @@ def main(args):
             time_message = '{} s'.format(
                 int(delta_time)) if delta_time > 1 else '{} ms'.format(int(delta_time * 1000))
 
-            print('{}/{} Training accuracy {}. {}'.format(i + 1,
-                                                          steps,
-                                                          sess.run(accuracy, feed_dict={
-                                                                   x: data['train']['images'], y_: data['train']['labels']}),
-                                                          time_message))
+            print('{}/{} Training accuracy {}. {}'.format(
+                i + 1,
+                steps,
+                sess.run(accuracy, feed_dict={
+                    x: data['train']['images'], y_: data['train']['labels']}),
+                time_message))
             start_time = time.time()
 
             saver.save(sess, args.save_path)
 
         sess.run(train_step, feed_dict={
-                 x: data['train']['images'], y_: data['train']['labels']})
+            x: data['train']['images'], y_: data['train']['labels']})
 
     if args.train_set_size < 1:
         print('Test accuracy {}'.format(sess.run(accuracy, feed_dict={
