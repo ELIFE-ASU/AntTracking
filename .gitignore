@@ -109,6 +109,10 @@ ENV/
 *.png
 *.mp4
 *.avi
+*.json
+
+# ipython notebooks
+*.ipynb
 
 # vscode
 .vscode

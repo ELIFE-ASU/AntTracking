@@ -1,5 +1,6 @@
 import os
 import argparse
+import json
 import progressbar
 import cv2
 import numpy as np
@@ -184,15 +185,15 @@ def locate_tandem(frame, region, classifier):
 
 
 def individual_positions(frame, tandem_position, window_size):
-    global counter
     xmin, xmax = tandem_position[0] - \
         window_size // 2, tandem_position[0] + window_size // 2
     ymin, ymax = tandem_position[1] - \
         window_size // 2, tandem_position[1] + window_size // 2
 
     window = cv2.cvtColor(frame[ymin:ymax, xmin:xmax], cv2.COLOR_BGR2GRAY)
-    th, bw = cv2.threshold(window, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    centroids = find_centroids(bw, MIN_CONTOUR_SIZE, MAX_CONTOUR_SIZE)
+
+    th = 105
+    centroids = []
 
     while len(centroids) < 2 and th > 80:
         th, bw = cv2.threshold(window, th - 5, 255, cv2.THRESH_BINARY)
@@ -201,16 +202,102 @@ def individual_positions(frame, tandem_position, window_size):
     return [(cx + xmin, cy + ymin) for cx, cy in centroids]
 
 
-def tag_tandem(frame, tandem_positions, window_size):
-    for cx, cy in tandem_positions:
-        ants_positions = individual_positions(frame, (cx, cy), window_size)
+def tandem_ants(frame, region, classifier, window_size):
+    tandem_candidates = locate_tandem(
+        frame, region, classifier)
+
+    tandems = []
+    ants = []
+    for cx, cy in tandem_candidates:
+        ants_candidates = individual_positions(
+            frame, (cx, cy), window_size)
+        if len(ants_candidates) == 2:
+            tandems.append((cx, cy))
+            ants.append(ants_candidates)
+
+    return tandems, ants
+
+
+def match_order(positions1, positions2):
+    """Match the order of positions2 with positions1 to ensure continuity."""
+    def distance2(xy1, xy2):
+        return (xy1[0] - xy2[0]) * (xy1[0] - xy2[0]) + (xy1[1] - xy2[1]) * (xy1[1] - xy2[1])
+
+    d11 = distance2(positions1[0], positions2[0])
+    d12 = distance2(positions1[0], positions2[1])
+    d21 = distance2(positions1[1], positions2[0])
+    d22 = distance2(positions1[1], positions2[1])
+
+    if d12 < d22 and d11 > d21:
+        return [positions2[1], positions2[0]]
+    return positions2
+
+
+def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
+    latency = 5
+    labels = []
+    for tandem, pairs in zip(tandems, ants):
+        for label, info in tandems_history.items():
+            anchor_x, anchor_y = info['last_seen']['position']
+            anchor_t = info['last_seen']['time']
+            if (video_time - anchor_t < latency
+                    and abs(tandem[0] - anchor_x) < window_size
+                    and abs(tandem[1] - anchor_y) < window_size):
+                info['last_seen']['time'] = video_time
+                info['last_seen']['frame'] = frame_num
+                info['last_seen']['position'] = tandem
+                # Check continuity.
+                ordered_pairs = match_order(info['ants_positions'][-1], pairs)
+                info['ants_positions'].append(ordered_pairs)
+                labels.append(label)
+                break
+        else:
+            num_labels = len(tandems_history)
+            tandems_history[num_labels] = {
+                'last_seen':
+                {
+                    'position': tandem,
+                    'time': video_time,
+                    'frame': frame_num
+                },
+                'ants_positions': [pairs]
+            }
+            labels.append(num_labels)
+
+    return labels
+
+
+def redeem_lost(frame, tandems_history, frame_num, window_size):
+    latency = 30 * 3
+    for info in tandems_history.values():
+        if frame_num - latency < info['last_seen']['frame'] < frame_num:
+            ants = individual_positions(
+                frame, info['last_seen']['position'], window_size)
+            if len(ants) == 2:
+                info['last_seen']['frame'] = frame_num
+                ordered_pairs = match_order(info['ants_positions'][-1], ants)
+                info['ants_positions'].append(ordered_pairs)
+
+    tandems, labels, ants = [], [], []
+    for label, info in tandems_history.items():
+        if info['last_seen']['frame'] == frame_num:
+            labels.append(label)
+            tandems.append(info['last_seen']['position'])
+            ants.append(info['ants_positions'][-1])
+
+    return labels, tandems, ants
+
+
+def tag_tandem(frame, tandems, ants, labels, window_size):
+    for (cx, cy), pairs, label in zip(tandems, ants, labels):
         cv2.rectangle(frame, (cx - window_size // 2, cy - window_size // 2),
                       (cx + window_size // 2, cy + window_size // 2), (0, 255, 0), 3)
-
+        cv2.putText(frame, str(label), (cx - 8, cy - window_size + 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         # Mark the center of mass of each ant.
-        for antx, anty in ants_positions:
-            cv2.rectangle(frame, (antx - 2, anty - 2),
-                          (antx + 2, anty + 2), (0, 0, 255), 2)
+        for antx, anty in pairs:
+            cv2.rectangle(frame, (antx - 1, anty - 1),
+                          (antx + 1, anty + 1), (0, 0, 255), 2)
     return frame
 
 
@@ -229,14 +316,14 @@ def main(args):
 
     # Locating user specified video start.
     print('Seeking specified video start...', end='')
-    frame_count = 0
-    while frame_count < video_start * video_fps:
+    frame_num = 0
+    while frame_num < video_start * video_fps:
         ret, frame = input_video.read()
         if not ret:
             print('Input video shorter than {}s'.format(video_start))
             input_video.release()
             return
-        frame_count += 1
+        frame_num += 1
     print(' done.')
 
     # Open output video for recording.
@@ -267,28 +354,40 @@ def main(args):
     bar.update(0)
 
     # Tracking.
+    tandems_history = {}
     video_time = 0
     while video_time < video_duration:
         ret, frame = input_video.read()
         if not ret:
             bar.update(video_time)
             break
+        # Find the position of tandems and their individual ants.
+        tandems, ants = tandem_ants(
+            frame, (xmin, ymin, xmax, ymax), classifier, args.label_size)
+        # Record the postions in tandems_history, matching the labels.
+        labels = gather(tandems, ants, tandems_history,
+                        video_time, frame_num, args.label_size)
+        labels, tandems, ants = redeem_lost(
+            frame, tandems_history, frame_num, args.label_size)
+        # Collect all tandems of the current frame.
 
-        tandem_positions = locate_tandem(
-            frame, (xmin, ymin, xmax, ymax), classifier)
-
-        tagged_frame = tag_tandem(frame, tandem_positions, args.label_size)
+        # Tag the tandems and ants.
+        tagged_frame = tag_tandem(
+            frame, tandems, ants, labels, args.label_size)
 
         output_video.write(tagged_frame)
         # Update progress bar
-        frame_count += 1
-        if frame_count % 30 == 0:
+        frame_num += 1
+        if frame_num % 30 == 0:
             video_time += 1
             bar.update(video_time)
 
     sess.close()
     input_video.release()
     output_video.release()
+
+    with open(args.log, 'w') as log_json:
+        json.dump(tandems_history, log_json)
 
 
 if __name__ == '__main__':
@@ -298,6 +397,8 @@ if __name__ == '__main__':
                         help='path to input video file')
     parser.add_argument('--output', '-o', type=str,
                         help='path to output video file')
+    parser.add_argument('--log', '-l', type=str,
+                        help='path to the json log file')
     parser.add_argument('--resolution', nargs=2, type=int,
                         help='resolution of input and output videos')
     parser.add_argument('--fps', type=int,
