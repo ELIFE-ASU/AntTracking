@@ -67,21 +67,30 @@ def build_cnn(size):
     with tf.name_scope('reshape'):
         x_image = tf.reshape(x, [-1, size, size, 1])
 
-    with tf.name_scope('conv'):
-        W_conv = weight_variable([3, 3, 1, 8])
-        b_conv = bias_variable([8])
-        h_conv = tf.nn.relu(tf.nn.conv2d(
-            x_image, W_conv, strides=[1, 1, 1, 1], padding='SAME'))
+    with tf.name_scope('conv1'):
+        W_conv1 = weight_variable([3, 3, 1, 8])
+        # b_conv = bias_variable([8])
+        h_conv1 = tf.nn.relu(tf.nn.conv2d(
+            x_image, W_conv1, strides=[1, 1, 1, 1], padding='SAME'))
 
-    with tf.name_scope('pool'):
-        h_pool = tf.nn.max_pool(h_conv, ksize=[1, 2, 2, 1], strides=[
-                                1, 2, 2, 1], padding='SAME')
+    with tf.name_scope('pool1'):
+        h_pool1 = tf.nn.max_pool(h_conv1, ksize=[1, 2, 2, 1], strides=[
+            1, 2, 2, 1], padding='SAME')
+
+    with tf.name_scope('conv2'):
+        W_conv2 = weight_variable[(5, 5, 1, 16)]
+        h_conv2 = tf.nn.relu(tf.nn.conv2d(
+            h_pool1, W_conv2, strides=[1, 1, 1, 1], padding='SAME'))
+
+    with tf.name_scope('pool2'):
+        h_pool2 = tf.nn.max_pool(h_conv2, ksize=[1, 2, 2, 1], strides=[
+                                 1, 2, 2, 1], padding='SAME')
 
     with tf.name_scope('fc1'):
-        W_fc1 = weight_variable([size // 2 * size // 2 * 8, 100])
+        W_fc1 = weight_variable([size // 2 * size // 2 * 16, 100])
         b_fc1 = bias_variable([100])
 
-        h_pool_flat = tf.reshape(h_pool, [-1, size // 2 * size // 2 * 8])
+        h_pool_flat = tf.reshape(h_pool2, [-1, size // 2 * size // 2 * 8])
         h_fc1 = tf.nn.relu(tf.matmul(h_pool_flat, W_fc1) + b_fc1)
 
     with tf.name_scope('fc2'):
