@@ -161,7 +161,7 @@ if __name__ == '__main__':
                         default=SAVE_PATH,
                         help='TensorFlow checkpoint save path')
     parser.add_argument('--train_set_size', type=float,
-                        default=0.,
+                        default=0.9,
                         help='relative size of train set to whole data set')
     parser.add_argument('--steps', type=int,
                         default=3000,
