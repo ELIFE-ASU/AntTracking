@@ -78,7 +78,7 @@ def build_cnn(size):
             1, 2, 2, 1], padding='SAME')
 
     with tf.name_scope('conv2'):
-        W_conv2 = weight_variable[(5, 5, 1, 16)]
+        W_conv2 = weight_variable([5, 5, 8, 16])
         h_conv2 = tf.nn.relu(tf.nn.conv2d(
             h_pool1, W_conv2, strides=[1, 1, 1, 1], padding='SAME'))
 
@@ -87,14 +87,14 @@ def build_cnn(size):
                                  1, 2, 2, 1], padding='SAME')
 
     with tf.name_scope('fc1'):
-        W_fc1 = weight_variable([size // 2 * size // 2 * 16, 100])
-        b_fc1 = bias_variable([100])
+        W_fc1 = weight_variable([size // 4 * size // 4 * 16, 64])
+        b_fc1 = bias_variable([64])
 
-        h_pool_flat = tf.reshape(h_pool2, [-1, size // 2 * size // 2 * 8])
+        h_pool_flat = tf.reshape(h_pool2, [-1, size // 4 * size // 4 * 16])
         h_fc1 = tf.nn.relu(tf.matmul(h_pool_flat, W_fc1) + b_fc1)
 
     with tf.name_scope('fc2'):
-        W_fc2 = weight_variable([100, 3])
+        W_fc2 = weight_variable([64, 3])
         b_fc2 = bias_variable([3])
 
         y = tf.matmul(h_fc1, W_fc2) + b_fc2
@@ -129,11 +129,16 @@ def main(args):
             time_message = '{} s'.format(
                 int(delta_time)) if delta_time > 1 else '{} ms'.format(int(delta_time * 1000))
 
-            print('{}/{} Training accuracy {}. {}'.format(
+            train_accuracy = sess.run(accuracy, feed_dict={
+                    x: data['train']['images'], y_: data['train']['labels']})
+            test_accuracy = sess.run(accuracy, feed_dict={
+                    x: data['test']['images'], y_: data['test']['labels']})
+
+            print('{}/{} Accuracy: Train: {:.4f}, Test {:.4f}. {}'.format(
                 i + 1,
                 steps,
-                sess.run(accuracy, feed_dict={
-                    x: data['train']['images'], y_: data['train']['labels']}),
+                train_accuracy,
+                test_accuracy,
                 time_message))
             start_time = time.time()
 
@@ -143,7 +148,7 @@ def main(args):
             x: data['train']['images'], y_: data['train']['labels']})
 
     if args.train_set_size < 1:
-        print('Test accuracy {}'.format(sess.run(accuracy, feed_dict={
+        print('Test accuracy {:.4f}'.format(sess.run(accuracy, feed_dict={
             x: data['test']['images'], y_: data['test']['labels']})))
     sess.close()
 
@@ -161,7 +166,7 @@ if __name__ == '__main__':
                         default=SAVE_PATH,
                         help='TensorFlow checkpoint save path')
     parser.add_argument('--train_set_size', type=float,
-                        default=0.9,
+                        default=1,
                         help='relative size of train set to whole data set')
     parser.add_argument('--steps', type=int,
                         default=3000,
