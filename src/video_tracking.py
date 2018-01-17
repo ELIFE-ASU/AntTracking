@@ -404,6 +404,7 @@ if __name__ == '__main__':
     parser.add_argument('--fps', type=int,
                         help='frame per second of output videos')
     parser.add_argument('--time', '-t', nargs=2, type=int,
+                        default=[None, None],
                         help='time range of input video in seconds')
     parser.add_argument('--region', nargs=4, type=int,
                         help='region of input video to be monitored')
