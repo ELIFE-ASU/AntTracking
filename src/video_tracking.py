@@ -299,9 +299,13 @@ def tag_tandem(frame, tandems, ants, labels, window_size):
         cv2.putText(frame, str(label), (cx - 8, cy - window_size + 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         # Mark the center of mass of each ant.
-        for antx, anty in pairs:
-            cv2.rectangle(frame, (antx - 1, anty - 1),
-                          (antx + 1, anty + 1), (0, 0, 255), 2)
+        if len(pairs) == 2:
+            (antx1, anty1), (antx2, anty2) = pairs
+            cv2.rectangle(frame, (antx1 - 1, anty1 - 1), (antx1 + 1, anty1 + 1),
+                          (0, 0, 255), 2)
+            cv2.rectangle(frame, (antx2 - 1, anty2 - 1), (antx2 + 1, anty2 + 1),
+                          (0, 255, 255), 2)
+
     return frame
 
 
@@ -412,7 +416,7 @@ if __name__ == '__main__':
     parser.add_argument('--region', nargs=4, type=int,
                         help='region of input video to be monitored')
     parser.add_argument('--checkpoint', type=str,
-                        default='../data/tf_save/trained_model_v1/trained_model.ckpt',
+                        default='../data/tf_save/trained_model_v2/model.ckpt',
                         help='path to TensorFlow checkpoint')
     parser.add_argument('--label_size', type=int,
                         default=LABEL_SIZE,
