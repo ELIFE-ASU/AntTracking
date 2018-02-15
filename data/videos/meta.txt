@@ -1,6 +1,6 @@
 # "TandemRun.mp4"
-XMIN = 1470
-XMAX = 2840
+XMIN = 1480
+XMAX = 2850
 YMIN = 50
 YMAX = 2000
 

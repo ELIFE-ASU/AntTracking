@@ -18,6 +18,7 @@ LABEL_SIZE = 40
 
 
 def get_parameters(input_video, args):
+    """Parse arguments and determine parameters of input video."""
     # Define video resolution and fps.
     video_width = int(input_video.get(cv2.CAP_PROP_FRAME_WIDTH))
     video_height = int(input_video.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -58,6 +59,7 @@ def get_parameters(input_video, args):
 
 
 def build_graph(size):
+    """Build a TensorFlow graph as the classifier."""
     # CNN
     def weight_variable(shape):
         initial = tf.truncated_normal(shape, stddev=0.1)
@@ -101,6 +103,7 @@ def build_graph(size):
 
 
 def find_centroids(bw, min_size, max_size):
+    """Find centroids of all blobs."""
     if min_size < 1:
         raise ValueError('min_size must be at least 1')
 
@@ -123,6 +126,7 @@ def find_centroids(bw, min_size, max_size):
 
 
 def get_masked_window(grayed, cx, cy, size):
+    """Return candidate window to be tested by classifier."""
     ymin = cy - size // 2 if cy - size // 2 > 0 else 0
     xmin = cx - size // 2 if cx - size // 2 > 0 else 0
     windowed = grayed[ymin:ymin + size, xmin:xmin + size]
@@ -136,6 +140,7 @@ def get_masked_window(grayed, cx, cy, size):
 
 
 def mesh_positions(positions, size):
+    """Combine positions that are closer than size into one position."""
     new_positions = []
     positions = list(positions)
     while positions:
@@ -157,6 +162,7 @@ def mesh_positions(positions, size):
 
 
 def locate_tandem(frame, region, classifier):
+    """Locate all tandems in specified region of a frame."""
     xmin, ymin, xmax, ymax = region
     sess = classifier['session']
     x = classifier['x']
@@ -189,6 +195,7 @@ def locate_tandem(frame, region, classifier):
 
 
 def individual_positions(frame, tandem_position, window_size):
+    """Find positions of individual ants of a tandem pair."""
     xmin, xmax = tandem_position[0] - \
         window_size // 2, tandem_position[0] + window_size // 2
     ymin, ymax = tandem_position[1] - \
@@ -207,6 +214,7 @@ def individual_positions(frame, tandem_position, window_size):
 
 
 def tandem_ants(frame, region, classifier, window_size):
+    """Find tandem pairs and positions of individual ants in the tandems."""
     tandem_candidates = locate_tandem(
         frame, region, classifier)
 
@@ -238,6 +246,7 @@ def match_order(positions1, positions2):
 
 
 def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
+    """Collect information of tandem runners to corresponding tracks according to history."""
     latency = 5
     labels = []
     for tandem, pairs in zip(tandems, ants):
@@ -272,6 +281,10 @@ def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
 
 
 def redeem_lost(frame, tandems_history, frame_num, window_size):
+    """
+    Try to locate individual ants where the tandem was last seen, if classifier
+    loses track in a frame.
+    """
     latency = 30 * 3
     for info in tandems_history.values():
         if frame_num - latency < info['last_seen']['frame'] < frame_num:
@@ -293,11 +306,12 @@ def redeem_lost(frame, tandems_history, frame_num, window_size):
 
 
 def tag_tandem(frame, tandems, ants, labels, window_size):
+    """Tag the tandems in the output video frame."""
     for (cx, cy), pairs, label in zip(tandems, ants, labels):
         cv2.rectangle(frame, (cx - window_size // 2, cy - window_size // 2),
                       (cx + window_size // 2, cy + window_size // 2), (0, 255, 0), 3)
         cv2.putText(frame, str(label), (cx - 8, cy - window_size + 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         # Mark the center of mass of each ant.
         if len(pairs) == 2:
             (antx1, anty1), (antx2, anty2) = pairs
