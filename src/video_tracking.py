@@ -37,11 +37,13 @@ def get_parameters(input_video, args):
         raise argparse.ArgumentError('--fps', 'fps not defined')
 
     # Define input video length in seconds.
-    video_end = int(input_video.get(cv2.CAP_PROP_FRAME_COUNT) / video_fps)
-    if len(args.time) == 2:
+    if args.time[1]:
         video_end = args.time[1]
-    if not video_end:
-        video_end = 5 * 3600  # Default max duration 5 hours.
+    else:
+        try:
+            video_end = int(input_video.get(cv2.CAP_PROP_FRAME_COUNT) / video_fps)
+        except TypeError:
+            video_end = 5 * 3600  # Default max duration 5 hours.
 
     video_start = 0
     if args.time[0]:
@@ -442,8 +444,10 @@ if __name__ == '__main__':
     parser.add_argument('--fps', type=int,
                         help='frame per second of output videos')
     parser.add_argument('--time', '-t', nargs=2, type=int,
+                        default=[None, None],
                         help='time range of input video in seconds')
     parser.add_argument('--region', nargs=4, type=int,
+                        default=[None, None, None, None],
                         help='region of input video to be monitored')
     parser.add_argument('--checkpoint', type=str,
                         default='../data/tf_save/trained_model_v2/model.ckpt',
