@@ -187,7 +187,7 @@ def locate_tandem(frame, region, classifier):
     # Feed masked windows to trained model for prediction.
     predictions = sess.run(tf.argmax(y, 1), feed_dict={x: masks})
 
-    # Put tags on video according to the predictions.
+    # Collect tandem positions.
     tandem_positions = positions[predictions == 1]
     tandem_positions = mesh_positions(tandem_positions, SIZE)
 
@@ -215,14 +215,13 @@ def individual_positions(frame, tandem_position, window_size):
 
 def tandem_ants(frame, region, classifier, window_size):
     """Find tandem pairs and positions of individual ants in the tandems."""
-    tandem_candidates = locate_tandem(
-        frame, region, classifier)
+    tandem_candidates = locate_tandem(frame, region, classifier)
 
     tandems = []
     ants = []
     for cx, cy in tandem_candidates:
-        ants_candidates = individual_positions(
-            frame, (cx, cy), window_size)
+        ants_candidates = individual_positions(frame, (cx, cy), window_size)
+
         if len(ants_candidates) == 2:
             tandems.append((cx, cy))
             ants.append(ants_candidates)
@@ -253,6 +252,7 @@ def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
         for label, info in tandems_history.items():
             anchor_x, anchor_y = info['last_seen']['position']
             anchor_t = info['last_seen']['time']
+            # Attach to positions to existing tandems.
             if (video_time - anchor_t < latency
                     and abs(tandem[0] - anchor_x) < window_size
                     and abs(tandem[1] - anchor_y) < window_size):
@@ -264,6 +264,7 @@ def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
                 info['ants_positions'].append(ordered_pairs)
                 labels.append(label)
                 break
+        # Otherwise create a new track.
         else:
             num_labels = len(tandems_history)
             tandems_history[num_labels] = {
@@ -315,10 +316,25 @@ def tag_tandem(frame, tandems, ants, labels, window_size):
         # Mark the center of mass of each ant.
         if len(pairs) == 2:
             (antx1, anty1), (antx2, anty2) = pairs
+
+            displacement = (antx1 - antx2, anty1 - anty2)
+            distance = np.linalg.norm(displacement)
+
             cv2.rectangle(frame, (antx1 - 1, anty1 - 1), (antx1 + 1, anty1 + 1),
                           (0, 0, 255), 2)
+
+            text1x = int(displacement[0] * 20 / distance) + antx1 - 8
+            text1y = int(displacement[1] * 20 / distance) + anty1 + 8
+            cv2.putText(frame, str(0), (text1x, text1y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+
             cv2.rectangle(frame, (antx2 - 1, anty2 - 1), (antx2 + 1, anty2 + 1),
                           (0, 255, 255), 2)
+
+            text2x = int(-displacement[0] * 20 / distance) + antx2 - 8
+            text2y = int(-displacement[1] * 20 / distance) + anty2 + 8
+            cv2.putText(frame, str(1), (text2x, text2y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
     return frame
 
