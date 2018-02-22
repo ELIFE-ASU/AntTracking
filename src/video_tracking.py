@@ -299,9 +299,10 @@ def tag_tandem(frame, tandems, ants, labels, window_size):
         cv2.putText(frame, str(label), (cx - 8, cy - window_size + 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         # Mark the center of mass of each ant.
-        for antx, anty in pairs:
-            cv2.rectangle(frame, (antx - 1, anty - 1),
-                          (antx + 1, anty + 1), (0, 0, 255), 2)
+        (ant1x, ant1y), (ant2x, ant2y) = pairs
+        cv2.rectangle(frame, (ant1x - 1, ant1y - 1), (ant1x + 1, ant1y + 1), (0, 0, 255), 2)
+        cv2.rectangle(frame, (ant2x - 1, ant2y - 1), (ant2x + 1, ant2y + 1), (0, 255, 255), 2)
+
     return frame
 
 
