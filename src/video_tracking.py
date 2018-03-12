@@ -205,12 +205,21 @@ def individual_positions(frame, tandem_position, window_size):
 
     window = cv2.cvtColor(frame[ymin:ymax, xmin:xmax], cv2.COLOR_BGR2GRAY)
 
-    th = 105
     centroids = []
+    # Use adaptiveThreshold to remove varying background shade.
+    # Use OTSU to find the best blobs.
+    th, otsu_bw = cv2.threshold(window, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    if th > 80:  # If there are valid ant candidates.
+        adaptive_bw = cv2.adaptiveThreshold(window, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                            cv2.THRESH_BINARY, 11, 2)
+        bw = otsu_bw.copy()
+        bw[adaptive_bw == 255] = 255
+
+        centroids = find_centroids(bw, MIN_CONTOUR_SIZE, MAX_CONTOUR_SIZE)
 
     while len(centroids) < 2 and th > 80:
         th, bw = cv2.threshold(window, th - 5, 255, cv2.THRESH_BINARY)
-        centroids = find_centroids(bw, 10, MAX_CONTOUR_SIZE)
+        centroids = find_centroids(bw, MIN_CONTOUR_SIZE, MAX_CONTOUR_SIZE)
 
     return [(cx + xmin, cy + ymin) for cx, cy in centroids]
 
@@ -319,24 +328,9 @@ def tag_tandem(frame, tandems, ants, labels, window_size):
         if len(pairs) == 2:
             (antx1, anty1), (antx2, anty2) = pairs
 
-            displacement = (antx1 - antx2, anty1 - anty2)
-            distance = np.linalg.norm(displacement)
+            cv2.rectangle(frame, (antx1 - 1, anty1 - 1), (antx1 + 1, anty1 + 1), (0, 0, 255), 2)
 
-            cv2.rectangle(frame, (antx1 - 1, anty1 - 1), (antx1 + 1, anty1 + 1),
-                          (0, 0, 255), 2)
-
-            text1x = int(displacement[0] * 20 / distance) + antx1 - 8
-            text1y = int(displacement[1] * 20 / distance) + anty1 + 8
-            cv2.putText(frame, str(0), (text1x, text1y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-
-            cv2.rectangle(frame, (antx2 - 1, anty2 - 1), (antx2 + 1, anty2 + 1),
-                          (0, 255, 255), 2)
-
-            text2x = int(-displacement[0] * 20 / distance) + antx2 - 8
-            text2y = int(-displacement[1] * 20 / distance) + anty2 + 8
-            cv2.putText(frame, str(1), (text2x, text2y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            cv2.rectangle(frame, (antx2 - 1, anty2 - 1), (antx2 + 1, anty2 + 1), (0, 255, 255), 2)
 
     return frame
 
