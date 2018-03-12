@@ -412,7 +412,7 @@ def main(args):
         output_video.write(tagged_frame)
         # Update progress bar
         frame_num += 1
-        if frame_num % 30 == 0:
+        if frame_num % video_fps == 0:
             video_time += 1
             bar.update(video_time)
 
