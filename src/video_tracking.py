@@ -18,6 +18,7 @@ LABEL_SIZE = 40
 
 
 def get_parameters(input_video, args):
+    """Parse arguments and determine parameters of input video."""
     # Define video resolution and fps.
     video_width = int(input_video.get(cv2.CAP_PROP_FRAME_WIDTH))
     video_height = int(input_video.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -36,11 +37,13 @@ def get_parameters(input_video, args):
         raise argparse.ArgumentError('--fps', 'fps not defined')
 
     # Define input video length in seconds.
-    video_end = int(input_video.get(cv2.CAP_PROP_FRAME_COUNT) / video_fps)
-    if len(args.time) == 2:
+    if args.time[1]:
         video_end = args.time[1]
-    if not video_end:
-        video_end = 5 * 3600  # Default max duration 5 hours.
+    else:
+        try:
+            video_end = int(input_video.get(cv2.CAP_PROP_FRAME_COUNT) / video_fps)
+        except TypeError:
+            video_end = 5 * 3600  # Default max duration 5 hours.
 
     video_start = 0
     if args.time[0]:
@@ -58,6 +61,7 @@ def get_parameters(input_video, args):
 
 
 def build_graph(size):
+    """Build a TensorFlow graph as the classifier."""
     # CNN
     def weight_variable(shape):
         initial = tf.truncated_normal(shape, stddev=0.1)
@@ -101,6 +105,7 @@ def build_graph(size):
 
 
 def find_centroids(bw, min_size, max_size):
+    """Find centroids of all blobs."""
     if min_size < 1:
         raise ValueError('min_size must be at least 1')
 
@@ -123,6 +128,7 @@ def find_centroids(bw, min_size, max_size):
 
 
 def get_masked_window(grayed, cx, cy, size):
+    """Return candidate window to be tested by classifier."""
     ymin = cy - size // 2 if cy - size // 2 > 0 else 0
     xmin = cx - size // 2 if cx - size // 2 > 0 else 0
     windowed = grayed[ymin:ymin + size, xmin:xmin + size]
@@ -136,6 +142,7 @@ def get_masked_window(grayed, cx, cy, size):
 
 
 def mesh_positions(positions, size):
+    """Combine positions that are closer than size into one position."""
     new_positions = []
     positions = list(positions)
     while positions:
@@ -157,6 +164,7 @@ def mesh_positions(positions, size):
 
 
 def locate_tandem(frame, region, classifier):
+    """Locate all tandems in specified region of a frame."""
     xmin, ymin, xmax, ymax = region
     sess = classifier['session']
     x = classifier['x']
@@ -181,7 +189,7 @@ def locate_tandem(frame, region, classifier):
     # Feed masked windows to trained model for prediction.
     predictions = sess.run(tf.argmax(y, 1), feed_dict={x: masks})
 
-    # Put tags on video according to the predictions.
+    # Collect tandem positions.
     tandem_positions = positions[predictions == 1]
     tandem_positions = mesh_positions(tandem_positions, SIZE)
 
@@ -189,6 +197,7 @@ def locate_tandem(frame, region, classifier):
 
 
 def individual_positions(frame, tandem_position, window_size):
+    """Find positions of individual ants of a tandem pair."""
     xmin, xmax = tandem_position[0] - \
         window_size // 2, tandem_position[0] + window_size // 2
     ymin, ymax = tandem_position[1] - \
@@ -196,25 +205,34 @@ def individual_positions(frame, tandem_position, window_size):
 
     window = cv2.cvtColor(frame[ymin:ymax, xmin:xmax], cv2.COLOR_BGR2GRAY)
 
-    th = 105
     centroids = []
+    # Use adaptiveThreshold to remove varying background shade.
+    # Use OTSU to find the best blobs.
+    th, otsu_bw = cv2.threshold(window, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    if th > 80:  # If there are valid ant candidates.
+        adaptive_bw = cv2.adaptiveThreshold(window, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                            cv2.THRESH_BINARY, 11, 2)
+        bw = otsu_bw.copy()
+        bw[adaptive_bw == 255] = 255
+
+        centroids = find_centroids(bw, MIN_CONTOUR_SIZE, MAX_CONTOUR_SIZE)
 
     while len(centroids) < 2 and th > 80:
         th, bw = cv2.threshold(window, th - 5, 255, cv2.THRESH_BINARY)
-        centroids = find_centroids(bw, 10, MAX_CONTOUR_SIZE)
+        centroids = find_centroids(bw, MIN_CONTOUR_SIZE, MAX_CONTOUR_SIZE)
 
     return [(cx + xmin, cy + ymin) for cx, cy in centroids]
 
 
 def tandem_ants(frame, region, classifier, window_size):
-    tandem_candidates = locate_tandem(
-        frame, region, classifier)
+    """Find tandem pairs and positions of individual ants in the tandems."""
+    tandem_candidates = locate_tandem(frame, region, classifier)
 
     tandems = []
     ants = []
     for cx, cy in tandem_candidates:
-        ants_candidates = individual_positions(
-            frame, (cx, cy), window_size)
+        ants_candidates = individual_positions(frame, (cx, cy), window_size)
+
         if len(ants_candidates) == 2:
             tandems.append((cx, cy))
             ants.append(ants_candidates)
@@ -238,12 +256,14 @@ def match_order(positions1, positions2):
 
 
 def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
+    """Collect information of tandem runners to corresponding tracks according to history."""
     latency = 5
     labels = []
     for tandem, pairs in zip(tandems, ants):
         for label, info in tandems_history.items():
             anchor_x, anchor_y = info['last_seen']['position']
             anchor_t = info['last_seen']['time']
+            # Attach to positions to existing tandems.
             if (video_time - anchor_t < latency
                     and abs(tandem[0] - anchor_x) < window_size
                     and abs(tandem[1] - anchor_y) < window_size):
@@ -255,6 +275,7 @@ def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
                 info['ants_positions'].append(ordered_pairs)
                 labels.append(label)
                 break
+        # Otherwise create a new track.
         else:
             num_labels = len(tandems_history)
             tandems_history[num_labels] = {
@@ -272,6 +293,10 @@ def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
 
 
 def redeem_lost(frame, tandems_history, frame_num, window_size):
+    """
+    Try to locate individual ants where the tandem was last seen, if classifier
+    loses track in a frame.
+    """
     latency = 30 * 3
     for info in tandems_history.values():
         if frame_num - latency < info['last_seen']['frame'] < frame_num:
@@ -293,15 +318,19 @@ def redeem_lost(frame, tandems_history, frame_num, window_size):
 
 
 def tag_tandem(frame, tandems, ants, labels, window_size):
+    """Tag the tandems in the output video frame."""
     for (cx, cy), pairs, label in zip(tandems, ants, labels):
         cv2.rectangle(frame, (cx - window_size // 2, cy - window_size // 2),
                       (cx + window_size // 2, cy + window_size // 2), (0, 255, 0), 3)
         cv2.putText(frame, str(label), (cx - 8, cy - window_size + 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         # Mark the center of mass of each ant.
-        (ant1x, ant1y), (ant2x, ant2y) = pairs
-        cv2.rectangle(frame, (ant1x - 1, ant1y - 1), (ant1x + 1, ant1y + 1), (0, 0, 255), 2)
-        cv2.rectangle(frame, (ant2x - 1, ant2y - 1), (ant2x + 1, ant2y + 1), (0, 255, 255), 2)
+        if len(pairs) == 2:
+            (antx1, anty1), (antx2, anty2) = pairs
+
+            cv2.rectangle(frame, (antx1 - 1, anty1 - 1), (antx1 + 1, anty1 + 1), (0, 0, 255), 2)
+
+            cv2.rectangle(frame, (antx2 - 1, anty2 - 1), (antx2 + 1, anty2 + 1), (0, 255, 255), 2)
 
     return frame
 
@@ -409,11 +438,13 @@ if __name__ == '__main__':
     parser.add_argument('--fps', type=int,
                         help='frame per second of output videos')
     parser.add_argument('--time', '-t', nargs=2, type=int,
+                        default=[None, None],
                         help='time range of input video in seconds')
     parser.add_argument('--region', nargs=4, type=int,
+                        default=[None, None, None, None],
                         help='region of input video to be monitored')
     parser.add_argument('--checkpoint', type=str,
-                        default='../data/tf_save/trained_model_v1/trained_model.ckpt',
+                        default='../data/tf_save/trained_model_v2/model.ckpt',
                         help='path to TensorFlow checkpoint')
     parser.add_argument('--label_size', type=int,
                         default=LABEL_SIZE,
