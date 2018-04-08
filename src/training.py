@@ -9,11 +9,12 @@ import argparse
 import numpy as np
 import cv2
 import tensorflow as tf
+from model import Classifier
 
 
 SIZE = 28
 DATA_PATH = '../data/ant_img_gs'
-SAVE_PATH = '../data/tf_save/trained_model.ckpt'
+SAVE_PATH = '../data/tf_save/trained_model/model.ckpt'
 
 
 def get_data(path, split):
@@ -57,105 +58,32 @@ def get_data(path, split):
             'test': {'images': test_images, 'labels': test_labels}}
 
 
-def build_cnn(size):
-    def weight_variable(shape):
-        initial = tf.truncated_normal(shape, stddev=0.1)
-        return tf.Variable(initial)
-
-    def bias_variable(shape):
-        initial = tf.constant(0.1, shape=shape)
-        return tf.Variable(initial)
-
-    x = tf.placeholder(tf.float32, shape=[None, size, size])
-    y_ = tf.placeholder(tf.float32, [None, 3])
-
-    with tf.name_scope('reshape'):
-        x_image = tf.reshape(x, [-1, size, size, 1])
-
-    with tf.name_scope('conv1'):
-        W_conv1 = weight_variable([3, 3, 1, 8])
-        # b_conv = bias_variable([8])
-        h_conv1 = tf.nn.relu(tf.nn.conv2d(
-            x_image, W_conv1, strides=[1, 1, 1, 1], padding='SAME'))
-
-    with tf.name_scope('pool1'):
-        h_pool1 = tf.nn.max_pool(h_conv1, ksize=[1, 2, 2, 1], strides=[
-            1, 2, 2, 1], padding='SAME')
-
-    with tf.name_scope('conv2'):
-        W_conv2 = weight_variable([5, 5, 8, 16])
-        h_conv2 = tf.nn.relu(tf.nn.conv2d(
-            h_pool1, W_conv2, strides=[1, 1, 1, 1], padding='SAME'))
-
-    with tf.name_scope('pool2'):
-        h_pool2 = tf.nn.max_pool(h_conv2, ksize=[1, 2, 2, 1], strides=[
-                                 1, 2, 2, 1], padding='SAME')
-
-    with tf.name_scope('fc1'):
-        W_fc1 = weight_variable([size // 4 * size // 4 * 16, 64])
-        b_fc1 = bias_variable([64])
-
-        h_pool_flat = tf.reshape(h_pool2, [-1, size // 4 * size // 4 * 16])
-        h_fc1 = tf.nn.relu(tf.matmul(h_pool_flat, W_fc1) + b_fc1)
-
-    with tf.name_scope('fc2'):
-        W_fc2 = weight_variable([64, 3])
-        b_fc2 = bias_variable([3])
-
-        y = tf.matmul(h_fc1, W_fc2) + b_fc2
-
-    cross_entropy = tf.reduce_mean(
-        tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y))
-    train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
-
-    return x, y, y_, train_step
-
-
 def main(args):
     print('Reading data...')
     data = get_data(args.data_path, args.train_set_size)
 
-    x, y, y_, train_step = build_cnn(args.image_size)
-
-    saver = tf.train.Saver()
-
-    sess = tf.Session()
-    sess.run(tf.global_variables_initializer())
+    classifier = Classifier(args.image_size, train=True)
 
     print('Training...')
     start_time = time.time()
-    steps = args.steps
-    for i in range(steps):
-        if (i + 1) % 100 == 0:
-            correct_prediction = tf.equal(tf.argmax(y, 1), tf.argmax(y_, 1))
-            accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-            delta_time = time.time() - start_time
-            time_message = '{} s'.format(
-                int(delta_time)) if delta_time > 1 else '{} ms'.format(int(delta_time * 1000))
+    train_interval = 100
+    for i in range(0, args.steps, train_interval):
+        classifier.train(data['train']['images'], data['train']['labels'], steps=train_interval)
+        classifier.save_checkpoint(args.save_path)
 
-            train_accuracy = sess.run(accuracy, feed_dict={
-                    x: data['train']['images'], y_: data['train']['labels']})
-            test_accuracy = sess.run(accuracy, feed_dict={
-                    x: data['test']['images'], y_: data['test']['labels']})
+        delta_time = time.time() - start_time
+        time_message = '{} s'.format(
+            int(delta_time)) if delta_time > 1 else '{} ms'.format(int(delta_time * 1000))
 
-            print('{}/{} Accuracy: Train: {:.4f}, Test {:.4f}. {}'.format(
-                i + 1,
-                steps,
-                train_accuracy,
-                test_accuracy,
-                time_message))
-            start_time = time.time()
+        train_accuracy = classifier.evaluate(data['train']['images'], data['train']['labels'])
+        test_accuracy = classifier.evaluate(data['test']['images'], data['test']['labels'])
 
-            saver.save(sess, args.save_path)
+        print('{}/{} Accuracy: Train: {:.4f}, Test {:.4f}. {}'.format(
+            i + 1, args.steps, train_accuracy, test_accuracy, time_message))
+        start_time = time.time()
 
-        sess.run(train_step, feed_dict={
-            x: data['train']['images'], y_: data['train']['labels']})
-
-    if args.train_set_size < 1:
-        print('Test accuracy {:.4f}'.format(sess.run(accuracy, feed_dict={
-            x: data['test']['images'], y_: data['test']['labels']})))
-    sess.close()
+    classifier.close()
 
 
 if __name__ == '__main__':

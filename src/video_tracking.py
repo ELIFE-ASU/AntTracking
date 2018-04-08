@@ -8,7 +8,7 @@ import json
 import progressbar
 import cv2
 import numpy as np
-import tensorflow as tf
+from model import Classifier
 
 
 SIZE = 28
@@ -58,50 +58,6 @@ def get_parameters(input_video, args):
     return {'resolution': (video_width, video_height, video_fps),
             'time': (video_start, video_end),
             'region': (xmin, ymin, xmax, ymax)}
-
-
-def build_graph(size):
-    """Build a TensorFlow graph as the classifier."""
-    # CNN
-    def weight_variable(shape):
-        initial = tf.truncated_normal(shape, stddev=0.1)
-        return tf.Variable(initial)
-
-    def bias_variable(shape):
-        initial = tf.constant(0.1, shape=shape)
-        return tf.Variable(initial)
-
-    tf.reset_default_graph()
-
-    x = tf.placeholder(tf.float32, shape=[None, size, size])
-
-    with tf.name_scope('reshape'):
-        x_image = tf.reshape(x, [-1, SIZE, SIZE, 1])
-
-    with tf.name_scope('conv'):
-        W_conv = weight_variable([3, 3, 1, 8])
-        b_conv = bias_variable([8])
-        h_conv = tf.nn.relu(tf.nn.conv2d(
-            x_image, W_conv, strides=[1, 1, 1, 1], padding='SAME'))
-
-    with tf.name_scope('pool'):
-        h_pool = tf.nn.max_pool(h_conv, ksize=[1, 2, 2, 1], strides=[
-                                1, 2, 2, 1], padding='SAME')
-
-    with tf.name_scope('fc1'):
-        W_fc1 = weight_variable([SIZE // 2 * SIZE // 2 * 8, 100])
-        b_fc1 = bias_variable([100])
-
-        h_pool_flat = tf.reshape(h_pool, [-1, SIZE // 2 * SIZE // 2 * 8])
-        h_fc1 = tf.nn.relu(tf.matmul(h_pool_flat, W_fc1) + b_fc1)
-
-    with tf.name_scope('fc2'):
-        W_fc2 = weight_variable([100, 3])
-        b_fc2 = bias_variable([3])
-
-        y = tf.matmul(h_fc1, W_fc2) + b_fc2
-
-    return x, y
 
 
 def find_centroids(bw, min_size, max_size):
@@ -166,9 +122,6 @@ def mesh_positions(positions, size):
 def locate_tandem(frame, region, classifier):
     """Locate all tandems in specified region of a frame."""
     xmin, ymin, xmax, ymax = region
-    sess = classifier['session']
-    x = classifier['x']
-    y = classifier['y']
 
     cropped = frame[ymin:ymax, xmin:xmax]
     grayed = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
@@ -187,7 +140,7 @@ def locate_tandem(frame, region, classifier):
     positions = np.asarray(positions)
 
     # Feed masked windows to trained model for prediction.
-    predictions = sess.run(tf.argmax(y, 1), feed_dict={x: masks})
+    predictions = np.argmax(classifier.classify(masks), axis=1)
 
     # Collect tandem positions.
     tandem_positions = positions[predictions == 1]
@@ -370,14 +323,9 @@ def main(args):
                                    (video_width, video_height))
 
     # Load TF model.
-    x, y = build_graph(SIZE)
-    saver = tf.train.Saver()
-
     print('Loading classifier model...', end='')
-    sess = tf.Session()
-    saver.restore(sess, args.checkpoint)
-
-    classifier = {'session': sess, 'x': x, 'y': y}
+    classifier = Classifier(SIZE)
+    classifier.load_checkpoint(args.checkpoint)
     print(' done.')
 
     print('Tracking...')
@@ -416,7 +364,7 @@ def main(args):
             video_time += 1
             bar.update(video_time)
 
-    sess.close()
+    classifier.close()
     input_video.release()
     output_video.release()
 
