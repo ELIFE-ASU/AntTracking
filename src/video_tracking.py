@@ -203,12 +203,20 @@ def match_order(positions1, positions2):
     d21 = distance2(positions1[1], positions2[0])
     d22 = distance2(positions1[1], positions2[1])
 
-    if d12 < d22 and d11 > d21:
+    if d12 + d21 < d11 + d22:
         return [positions2[1], positions2[0]]
     return positions2
 
 
-def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
+def is_big_skip(position1, position2, skip_tolerance):
+    """Determine if position2 is a big skip from position1."""
+    x1, y1 = position1
+    x2, y2 = position2
+    if abs(x1 - x2) > skip_tolerance or abs(y1 - y2) > skip_tolerance:
+        return True
+
+
+def gather(tandems, ants, tandems_history, video_time, frame_num, window_size, skip_tolerance=20):
     """Collect information of tandem runners to corresponding tracks according to history."""
     latency = 5
     labels = []
@@ -225,7 +233,14 @@ def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
                 info['last_seen']['position'] = tandem
                 # Check continuity.
                 ordered_pairs = match_order(info['ants_positions'][-1], pairs)
-                info['ants_positions'].append(ordered_pairs)
+                # Reject big skips.
+                if (is_big_skip(ordered_pairs[0], info['ants_positions'][-1][0], skip_tolerance) or
+                        is_big_skip(ordered_pairs[1], info['ants_positions'][-1][1], skip_tolerance)):
+                    info['ants_positions'].append(info['ants_positions'][-1])
+                    info['methods'].append('M')
+                else:
+                    info['ants_positions'].append(ordered_pairs)
+                    info['methods'].append('D')
                 labels.append(label)
                 break
         # Otherwise create a new track.
@@ -238,14 +253,16 @@ def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
                     'time': video_time,
                     'frame': frame_num
                 },
-                'ants_positions': [pairs]
+                'ants_positions': [pairs],
+                'methods': ['D']
+
             }
             labels.append(num_labels)
 
     return labels
 
 
-def redeem_lost(frame, tandems_history, frame_num, window_size):
+def redeem_lost(frame, tandems_history, frame_num, window_size, skip_tolerance=20):
     """
     Try to locate individual ants where the tandem was last seen, if classifier
     loses track in a frame.
@@ -258,7 +275,14 @@ def redeem_lost(frame, tandems_history, frame_num, window_size):
             if len(ants) == 2:
                 info['last_seen']['frame'] = frame_num
                 ordered_pairs = match_order(info['ants_positions'][-1], ants)
-                info['ants_positions'].append(ordered_pairs)
+
+                if (is_big_skip(ordered_pairs[0], info['ants_positions'][-1][0], skip_tolerance) or
+                        is_big_skip(ordered_pairs[1], info['ants_positions'][-1][1], skip_tolerance)):
+                    info['ants_positions'].append(info['ants_positions'][-1])
+                    info['methods'].append('M')
+                else:
+                    info['ants_positions'].append(ordered_pairs)
+                    info['methods'].append('D')
 
     tandems, labels, ants = [], [], []
     for label, info in tandems_history.items():
@@ -398,7 +422,7 @@ if __name__ == '__main__':
                         default=LABEL_SIZE,
                         help='size of label box')
     parser.add_argument('-c', '--codec', type=str,
-                        default='X264',
+                        default='avc1',
                         help='encoding codec for output video')
 
     main(parser.parse_args())

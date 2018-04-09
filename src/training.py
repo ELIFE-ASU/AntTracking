@@ -80,7 +80,7 @@ def main(args):
         test_accuracy = classifier.evaluate(data['test']['images'], data['test']['labels'])
 
         print('{}/{} Accuracy: Train: {:.4f}, Test {:.4f}. {}'.format(
-            i + 1, args.steps, train_accuracy, test_accuracy, time_message))
+            i + train_interval, args.steps, train_accuracy, test_accuracy, time_message))
         start_time = time.time()
 
     classifier.close()

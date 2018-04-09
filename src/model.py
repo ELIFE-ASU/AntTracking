@@ -6,9 +6,6 @@ from __future__ import division
 import tensorflow as tf
 
 
-SIZE = 28
-
-
 class Classifier:
     def __init__(self, size, train=False):
         graph = Classifier.build_graph(size, train)
@@ -103,7 +100,7 @@ class Classifier:
             accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
             cross_entropy = tf.reduce_mean(
-                tf.nn.softmax_cross_entropy_with_logits_v2(labels=y_, logits=y))
+                tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y))
             train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
 
             graph['y_'] = y_
