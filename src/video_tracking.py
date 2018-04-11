@@ -8,7 +8,7 @@ import json
 import progressbar
 import cv2
 import numpy as np
-import tensorflow as tf
+from model import Classifier
 
 
 SIZE = 28
@@ -58,50 +58,6 @@ def get_parameters(input_video, args):
     return {'resolution': (video_width, video_height, video_fps),
             'time': (video_start, video_end),
             'region': (xmin, ymin, xmax, ymax)}
-
-
-def build_graph(size):
-    """Build a TensorFlow graph as the classifier."""
-    # CNN
-    def weight_variable(shape):
-        initial = tf.truncated_normal(shape, stddev=0.1)
-        return tf.Variable(initial)
-
-    def bias_variable(shape):
-        initial = tf.constant(0.1, shape=shape)
-        return tf.Variable(initial)
-
-    tf.reset_default_graph()
-
-    x = tf.placeholder(tf.float32, shape=[None, size, size])
-
-    with tf.name_scope('reshape'):
-        x_image = tf.reshape(x, [-1, SIZE, SIZE, 1])
-
-    with tf.name_scope('conv'):
-        W_conv = weight_variable([3, 3, 1, 8])
-        b_conv = bias_variable([8])
-        h_conv = tf.nn.relu(tf.nn.conv2d(
-            x_image, W_conv, strides=[1, 1, 1, 1], padding='SAME'))
-
-    with tf.name_scope('pool'):
-        h_pool = tf.nn.max_pool(h_conv, ksize=[1, 2, 2, 1], strides=[
-                                1, 2, 2, 1], padding='SAME')
-
-    with tf.name_scope('fc1'):
-        W_fc1 = weight_variable([SIZE // 2 * SIZE // 2 * 8, 100])
-        b_fc1 = bias_variable([100])
-
-        h_pool_flat = tf.reshape(h_pool, [-1, SIZE // 2 * SIZE // 2 * 8])
-        h_fc1 = tf.nn.relu(tf.matmul(h_pool_flat, W_fc1) + b_fc1)
-
-    with tf.name_scope('fc2'):
-        W_fc2 = weight_variable([100, 3])
-        b_fc2 = bias_variable([3])
-
-        y = tf.matmul(h_fc1, W_fc2) + b_fc2
-
-    return x, y
 
 
 def find_centroids(bw, min_size, max_size):
@@ -166,9 +122,6 @@ def mesh_positions(positions, size):
 def locate_tandem(frame, region, classifier):
     """Locate all tandems in specified region of a frame."""
     xmin, ymin, xmax, ymax = region
-    sess = classifier['session']
-    x = classifier['x']
-    y = classifier['y']
 
     cropped = frame[ymin:ymax, xmin:xmax]
     grayed = cv2.cvtColor(cropped, cv2.COLOR_BGR2GRAY)
@@ -187,7 +140,7 @@ def locate_tandem(frame, region, classifier):
     positions = np.asarray(positions)
 
     # Feed masked windows to trained model for prediction.
-    predictions = sess.run(tf.argmax(y, 1), feed_dict={x: masks})
+    predictions = np.argmax(classifier.classify(masks), axis=1)
 
     # Collect tandem positions.
     tandem_positions = positions[predictions == 1]
@@ -250,12 +203,20 @@ def match_order(positions1, positions2):
     d21 = distance2(positions1[1], positions2[0])
     d22 = distance2(positions1[1], positions2[1])
 
-    if d12 < d22 and d11 > d21:
+    if d12 + d21 < d11 + d22:
         return [positions2[1], positions2[0]]
     return positions2
 
 
-def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
+def is_big_skip(position1, position2, skip_tolerance):
+    """Determine if position2 is a big skip from position1."""
+    x1, y1 = position1
+    x2, y2 = position2
+    if abs(x1 - x2) > skip_tolerance or abs(y1 - y2) > skip_tolerance:
+        return True
+
+
+def gather(tandems, ants, tandems_history, video_time, frame_num, window_size, skip_tolerance=20):
     """Collect information of tandem runners to corresponding tracks according to history."""
     latency = 5
     labels = []
@@ -272,7 +233,14 @@ def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
                 info['last_seen']['position'] = tandem
                 # Check continuity.
                 ordered_pairs = match_order(info['ants_positions'][-1], pairs)
-                info['ants_positions'].append(ordered_pairs)
+                # Reject big skips.
+                if (is_big_skip(ordered_pairs[0], info['ants_positions'][-1][0], skip_tolerance) or
+                        is_big_skip(ordered_pairs[1], info['ants_positions'][-1][1], skip_tolerance)):
+                    info['ants_positions'].append(info['ants_positions'][-1])
+                    info['methods'].append('M')
+                else:
+                    info['ants_positions'].append(ordered_pairs)
+                    info['methods'].append('D')
                 labels.append(label)
                 break
         # Otherwise create a new track.
@@ -285,14 +253,16 @@ def gather(tandems, ants, tandems_history, video_time, frame_num, window_size):
                     'time': video_time,
                     'frame': frame_num
                 },
-                'ants_positions': [pairs]
+                'ants_positions': [pairs],
+                'methods': ['D']
+
             }
             labels.append(num_labels)
 
     return labels
 
 
-def redeem_lost(frame, tandems_history, frame_num, window_size):
+def redeem_lost(frame, tandems_history, frame_num, window_size, skip_tolerance=20):
     """
     Try to locate individual ants where the tandem was last seen, if classifier
     loses track in a frame.
@@ -305,7 +275,14 @@ def redeem_lost(frame, tandems_history, frame_num, window_size):
             if len(ants) == 2:
                 info['last_seen']['frame'] = frame_num
                 ordered_pairs = match_order(info['ants_positions'][-1], ants)
-                info['ants_positions'].append(ordered_pairs)
+
+                if (is_big_skip(ordered_pairs[0], info['ants_positions'][-1][0], skip_tolerance) or
+                        is_big_skip(ordered_pairs[1], info['ants_positions'][-1][1], skip_tolerance)):
+                    info['ants_positions'].append(info['ants_positions'][-1])
+                    info['methods'].append('M')
+                else:
+                    info['ants_positions'].append(ordered_pairs)
+                    info['methods'].append('D')
 
     tandems, labels, ants = [], [], []
     for label, info in tandems_history.items():
@@ -370,14 +347,9 @@ def main(args):
                                    (video_width, video_height))
 
     # Load TF model.
-    x, y = build_graph(SIZE)
-    saver = tf.train.Saver()
-
     print('Loading classifier model...', end='')
-    sess = tf.Session()
-    saver.restore(sess, args.checkpoint)
-
-    classifier = {'session': sess, 'x': x, 'y': y}
+    classifier = Classifier(SIZE)
+    classifier.load_checkpoint(args.checkpoint)
     print(' done.')
 
     print('Tracking...')
@@ -412,11 +384,11 @@ def main(args):
         output_video.write(tagged_frame)
         # Update progress bar
         frame_num += 1
-        if frame_num % 30 == 0:
+        if frame_num % video_fps == 0:
             video_time += 1
             bar.update(video_time)
 
-    sess.close()
+    classifier.close()
     input_video.release()
     output_video.release()
 
@@ -450,7 +422,7 @@ if __name__ == '__main__':
                         default=LABEL_SIZE,
                         help='size of label box')
     parser.add_argument('-c', '--codec', type=str,
-                        default='X264',
+                        default='avc1',
                         help='encoding codec for output video')
 
     main(parser.parse_args())

@@ -1,4 +1,4 @@
-for folder in ant_img/*; do
+for folder in ../../data/ant_img/*; do
 	echo $folder
 	i=0
 	for file in $folder/*.png; do
